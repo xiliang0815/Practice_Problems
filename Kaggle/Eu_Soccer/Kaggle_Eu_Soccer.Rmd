@@ -1,0 +1,280 @@
+---
+title: "HW2"
+author: "Xi Liang"
+date: "3/7/2017"
+output:
+  html_document:
+    number_sections: no
+    toc: yes
+    toc_float: yes
+    toc_depth: 4
+fontsize: 12pt
+---
+# Loading, Merging and Cleaning Data
+```{r, warning=FALSE, message=FALSE}
+library(RJSONIO)
+library(dplyr)
+library(ggplot2)
+library(class)
+library(caret)
+library(stats)
+library(eeptools)
+```
+
+```{r}
+#loading the "Player" dataset and convert that into dataframe formate
+player <- fromJSON("data/Player.json")
+
+player <- lapply(player$records,unlist)
+player <- data.frame(do.call("rbind", player))
+```
+
+```{r, warning=FALSE}
+#loading the "Player" attribute dataset and convert that into dataframe formate
+player_attributes <- fromJSON('data/Player_Attributes.json')
+
+player_attributes <- lapply(player_attributes$records, unlist)
+player_attributes <- data.frame(do.call("rbind", player_attributes))
+```
+
+```{r}
+#merging two datasets together by "player_api_id"
+df <- merge(player, player_attributes, by = c('player_api_id'))
+```
+
+```{r}
+#removing non-important features
+df2 <- df[c(3,5,6,7,10:48)]
+```
+
+```{r, warning=FALSE}
+sapply(df2, class)
+
+df2$player_name = as.character(df2$player_name)
+df2$birthday = as.Date(df2$birthday)
+df2$date = as.Date(df2$date)
+
+index <- c(3,4,6,7,11:43)
+df2[index] <- apply(df2[index], 2, as.numeric)
+```
+
+    Having all the data classes in factor simply does not make sense. Here I will change the data class to what they should be.
+    
+```{r}
+#there are multiple data that belongs to one player, from multiple dates.
+df2['date'][df2['player_name'] == 'Alvaro Pereira']
+```
+
+    It seems that the dataset contains players recorded attributes from different dates, at this moment, I am only interested looking at the most updated attributes, so let's filter out the older data and keep the most current one.
+
+```{r}
+df2 <- df2 %>% group_by(player_name) %>% filter(date == max(date))
+df2 <- as.data.frame(df2)
+
+#see if only one date returns after filtering out the older data.
+df2['date'][df2['player_name'] == 'Alvaro Pereira']
+```
+
+```{r}
+str(df2)
+```
+
+    I can still see some data that did not make sense; features like preferred_foot, defensive_work_rate, and  denfensive_work_rate have more levels that they suppose to have. Let's clean those up.
+
+```{r}
+#cleaning feature preferred_foot
+df2 <- filter(df2, df2$preferred_foot == 'left' | df2$preferred_foot == 'right')
+df2$preferred_foot <-factor(df2$preferred_foot)
+table(df2$preferred_foot)
+```
+
+```{r}
+#cleaning feature attacking work rate
+table(df2$attacking_work_rate)
+
+index <- which(df2$attacking_work_rate == 'high' | df2$attacking_work_rate == 'low' | df2$attacking_work_rate == 'medium')
+df2 <- df2[index,]
+
+df2$attacking_work_rate <- factor(df2$attacking_work_rate)
+
+table(df2$attacking_work_rate)
+```
+
+```{r}
+#cleaning feature defensive work rate
+index <- which(df2$defensive_work_rate == 'high' | df2$defensive_work_rate == 'low' | df2$defensive_work_rate == 'medium')
+
+df2 <- df2[index,]
+
+df2$defensive_work_rate <- factor(df2$defensive_work_rate)
+
+table(df2$defensive_work_rate)
+```
+
+
+# Analysis (and some more data wrangling)
+
+## Classifying Field Position
+
+    One problem with this dataset is that even though that it has very detailed attributes, it does not provide the positions that players play on field, while having corresponding positions in the dataset is very important to analysis. To do this the fast way, I would need to classify the positions on my own.
+
+    In order to do the classfication, I listed all the players I know personally from each field position, and classified them as followed: striker = 1, midfielder =2, defender = 3, and goal keeper = 4. Then I would use these group as a the training set and try to identify the rest of the players in the dataset. I would     expect some classification errors, but this would be the fastest way to classify these players without pulling in other datasets.
+    
+```{r}
+#strikers
+StrikersName <-c('Paulo Dybala', 'Marcus Rashford', 'Angel Correa', 'Luis Suarez',
+                 'Kelechi Iheanacho', 'Antonio Sanabria', 'Divock Origi', 'Arkadiusz Milik',
+                 'Vietto', 'Andre Silva', 'Robert Lewandowski', 'Antoine Griezmann',
+                 'Sergio Aguero', 'Romelu Lukaku', 'Harry Kane', 'Alexandre Lacazette',
+                 'Emerick Aubameyang', 'Gonzalo Higuain')
+
+index_striker <- matrix(rep(0, length(StrikersName)))
+
+for (i in (1:length(StrikersName))) {
+  index_striker[i] =+ grep(StrikersName[i], df2$player_name)
+}
+
+
+striker_df <- df2[c(index_striker),][11:43]
+striker_df['field_position'] = '1'
+```
+
+```{r}
+#midfielders
+Midfielders <- c('Sergio Busquets', 'Blaise Matuidi', 'Grzegorz Krychowiak', 'Casemiro',
+                 'Nemanja Matic', 'Danilo Pereira', 'William Carvalho', 'Fabinho',
+                 'Eric Dier', 'Ruben Neves', 'Paul Pogba', 'James Rodriguez', 'Bruyne',
+                 'Sanches', 'Verratti', 'Andre Gomes')
+
+index_midfield <- matrix(rep(0, length(Midfielders)))
+
+for (i in (1:length(Midfielders))) {
+  index_midfield[i] =+ grep(Midfielders[i], df2$player_name)
+}
+
+
+midfield_df <- df2[c(index_midfield),][11:43]
+midfield_df['field_position'] = '2'
+```
+
+```{r}
+#defenders
+Defenders <- c('Aymeric Laporte', 'Kurt Zouma', 'Marquinhos', 'Samuel Umtiti', 'John Stones', 'Ruben Semedo',
+               'Jairo Riedewald', 'Cancelo', 'Hector Bellerin', 'Jedvaj', 'Manquillo', 'Luke Shaw',
+               'Gaya', 'Grimaldo', 'Jetro Willems', 'Rahman Baba', 'Jordan Amavi', 'Federico Mattiello', 'Andrew Robertson',
+               'Rafa Soares')
+
+index_defenders <- matrix(rep(0, length(Defenders)))
+
+for (i in (1:length(Defenders))) {
+  index_defenders[i] =+ grep(Defenders[i], df2$player_name)
+}
+
+defenders_df <- df2[c(index_defenders),][11:43]
+defenders_df['field_position'] = '3'
+```
+
+```{r, warning=FALSE}
+#goal keepers
+GK <- c('Gianluigi Donnarumma', 'Alban Lafont', 'Simone Scuffet', 'Stegen', 'Subasic', 'Sommer',
+        'Reina', 'Joe Hart', 'Claudio Bravo', 'Steve Mandanda', 'Ruffier', 'Keylor Navas', 'Bernd Leno',
+        'Jan Oblak', 'Gianluigi Buffon', 'Hugo Lloris', 'David De Gea', 'Thibaut Courtois')
+
+index_gk <- matrix(rep(0, length(GK)))
+
+for (i in (1:length(GK))) {
+  index_gk[i] =+ grep(GK[i], df2$player_name)
+}
+
+gk_df <- df2[c(index_gk),][11:43]
+gk_df['field_position'] = '4'
+```
+
+```{r}
+#combining all the df
+training_df <- rbind(gk_df, defenders_df, midfield_df, striker_df)
+training_label <- training_df[,ncol(training_df)]
+
+testing_df <- df2[,11:43]
+```
+
+```{r}
+#normalization
+preObj <- preProcess(training_df[,1:33], method = 'range')
+
+train_nor <- predict(preObj, training_df)
+
+test_nor <- predict(preObj, testing_df)
+
+pred_position <-knn(train_nor[,1:33], test_nor, training_label, 9)
+
+df2['position'] <- pred_position
+```
+
+## Age Based on Field Position
+```{r, warning=FALSE}
+#calculating age
+df2['Age_as_Today'] <- age_calc(df2$birthday, Sys.Date(), units = 'years')
+```
+
+```{r}
+#seperating data based on players' position
+attackers <- df2[df2['position'] == '1',]
+midfield <- df2[df2['position'] == '2',]
+defender <- df2[df2['position'] == '3',]
+gk <- df2[df2['position'] == '4',]
+```
+
+```{r}
+attacker_mean <- apply(attackers[,11:43], 2, mean)
+midfield_mean <- apply(midfield[,11:43], 2, mean)
+defender_mean <- apply(defender[,11:43], 2, mean)
+gk_mean <- apply(gk[,11:43], 2, mean)
+
+```
+
+```{r}
+attribute_mean <- rbind(attacker_mean, midfield_mean, defender_mean, gk_mean)
+attribute_mean <- apply(attribute_mean, 1, as.numeric)
+attribute_mean <- as.data.frame(attribute_mean)
+```
+
+```{r}
+rownames(attribute_mean) <- colnames(attackers[,11:43])
+attribute_mean
+```
+
+    While the table above provided a lot of information, but for the sake of keeping this assignment short, I would like to only focus on the player's age. From the mean calculated based on field positions, I observed that attacker and defenders' average ages are the youngest, while goal keeper and midfielders' ages are higher. I would like to dig a liitle deeper to look at the age distribution.
+
+```{r, warning=FALSE}
+ggplot(df2, aes(df2$position, df2$Age_as_Today, fill = df2$position)) +
+  geom_violin() +
+  geom_boxplot(width = 0.2) +
+  labs(title ='Age Distribution Based on Field Position') +
+  xlab('Position') +
+  ylab('Age')
+```
+
+    From the plot above, I observed that the age distribution of the striker has the lowest median among all, hence I speculate striker's age is the youngest compare the other filed position, as the result, I would like to use hypothesis testing to test my claim:
+
+    Claim : Striker's average age is lower than the average age of other field positions
+
+    Null Hypothesis:
+    $H_0$ = 29.43
+
+    Alternative Hypothesis:
+    $H_alpha$ < 29.43
+    
+    Because I don't have a population sigma, so in order to run this hypothesis test, I would need to use t-test.
+
+```{r}
+other_mean <- mean(df2$Age_as_Today)
+
+t.test(c(attackers$Age_as_Today), alternative = 'less', mu = other_mean)
+
+```
+    
+    Because p-value < alpha, I would reject null, which means at the 5% significance level, the data provide sufficient evidence to conclude that the striker average ag is younger than the average age of the other field position.
+
+
+

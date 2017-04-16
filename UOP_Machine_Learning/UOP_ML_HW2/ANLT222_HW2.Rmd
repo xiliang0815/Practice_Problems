@@ -1,0 +1,242 @@
+e---
+title: "ANLT222_HW2"
+author: "Xi Liang"
+date: "March 1, 2017"
+output:
+  html_document:
+    number_sections: no
+    toc: yes
+    toc_float: yes
+    toc_depth: 4
+fontsize: 12pt
+---
+
+```{r, echo=FALSE}
+setwd("~/Google Drive/UOP/Spring 2017/Machine Learning I/HW2")
+```
+
+```{r, warning= FALSE, message=FALSE}
+library(caret)
+library(ggplot2)
+library(class)
+library(flexclust)
+library(gmodels)
+```
+
+```{r, warning=FALSE}
+#loaing training data and create subset as instructed.
+train <- read.csv('healthcareTrain.csv')
+
+train_label <- train$pdc_80_flag
+
+train <- subset(train, select = c(pre_rx_cost, numofgen, numofbrand,
+                         generic_cost,adjust_total_30d,num_er))
+```
+
+
+```{r, warning = FALSE}
+#loading testing dataset and create subset as instructed.
+test <- read.csv('healthcareTest.csv')
+
+test_label <- test$pdc_80_flag
+
+test <- subset(test, select = c(pre_rx_cost, numofgen, numofbrand,
+                         generic_cost,adjust_total_30d,num_er))
+```
+
+
+```{r}
+colnames(train) <- tolower(colnames(train))
+colnames(test) <- tolower(colnames(test))
+```
+
+### Problem 1. 
+    In this problem you apply KNN to the healthcare data to predict adherent class (pdc-80-flag).
+
+#### 1a. 
+    Predict the pdc-80-ag using the following features:"pre-rx-cost","numofgen","numofbrand","generic-cost","adjust-total-30d", and "num-er". Determine the accuracy rate for test set for k = 75 to 105 with a step size of 2 and report it in a table. Use linear normalization method to normalize the input features and Euclidean distance for distance measure.Note that you must use the training parameters for normalization of testpoints. You can use built-in knn function in R for this problem.
+
+```{r}
+#normalization using `preProcess`()
+
+#create transformation from training data
+preObj <- preProcess(train, method = 'range')
+
+#normalizing training data
+train_nor <- predict(preObj, train)
+
+#normalizing testing data
+test_nor <- predict(preObj, test)
+```
+
+```{r}
+# using `knn()` function to predict 'pdc-80-flag'
+accuracy = vector(mode = 'numeric', length=0)
+
+for (i in (1:16)) {
+  k = 73 + 2*i
+  tmp <- knn(train_nor, test_nor, train_label, k =k)
+  pred_tmp <- confusionMatrix(tmp, test_label)
+  accuracy <- append(accuracy, as.numeric(pred_tmp$overall[1]))
+}
+
+accuracy <- accuracy * 100
+```
+
+```{r}
+#report accuracy in a table
+k <- seq(75, 105, 2)
+
+accuracy_tbl <- data.frame(cbind(k, accuracy))
+accuracy_tbl
+```
+
+#### 1b. 
+    Plot the accuracy rate vs. K. Which value of K gives you the best accuracy rate?
+
+```{r}
+ggplot(accuracy_tbl, aes(k, accuracy)) + 
+  geom_line() +
+  labs(title = 'Accuracy of Predicting pdc-80-flag Based on K, \nusing nonsymbolic features') +
+  xlab('K') +
+  ylab('Accuracy')
+
+# K that gave highest accuray
+K_best <- accuracy_tbl$k[which(accuracy_tbl$accuracy == max(accuracy_tbl$accuracy))]
+```
+
+  When K = `r K_best`, gave best accuracy.
+
+### Problem 2. 
+    In this problem you’ll continue using the healthcare data from the previous problem. You’ll use the Value Distance Metric (VDM) to find the distance between symbolic feature values Northeast, Midwest, South, and West, and further use this information in KNN algorithm to predict pdc-80-flag.
+
+#### 2a. 
+    Find all the relevant conditional probabilities for finding VDM for symbolic variable region and report your results in a table.
+
+```{r}
+#extract symbolic feature from training data
+symbolicGeo <- read.csv('healthcareTrain.csv') 
+symbolicGeo <- data.frame(symbolicGeo$regionN, symbolicGeo$pdc_80_flag)
+colnames(symbolicGeo) <- c('Region', 'Adherent')
+
+# conditional probability (geographic locations) based on class (0, 1)
+summation <- apply(table(symbolicGeo), 1, sum)
+cond_prep <- table(symbolicGeo)/summation
+row.names(cond_prep) <- c('Northeast', 'Midwest', 'South', 'West')
+
+cond_prep
+```
+
+#### 2b. 
+    Use results in part 1 to find the distance between symbolic feature values Northeast, Midwest, South, and West using VDM equation. Report the distances in a table.
+```{r}
+# distance of symbolic feature
+dist_tbl <- as.matrix(dist(cond_prep)) ^2
+dist_tbl
+```
+
+#### 2c. 
+    Use this variable (region) in conjunction with the variables of problem 1 and regenerate your model, for k = 75 to 105 with a step size of 2. Report the mean accuracy rate. Compare this mean with mean accuracy rate from previous problem. Has it increased for decreased?
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#loading dataset again and extract region data
+train <- read.csv('healthcareTrain.csv')
+train_region <- train$regionN
+train <- subset(train, select = c(pre_rx_cost, numofgen, numofbrand,
+                         generic_cost,adjust_total_30d,num_er))
+
+test <- read.csv('healthcareTest.csv')
+test_region <- test$regionN
+test <- subset(test, select = c(pre_rx_cost, numofgen, numofbrand,
+                         generic_cost,adjust_total_30d,num_er))
+```
+
+```{r}
+#combining the geographic ID of the training and testing datasets
+train_test_regions <- matrix(rep(0, 474032), ncol = 344)
+
+for (i in (1:length(test_region))) {
+  train_test_regions[,i] <- paste(train_region, test_region[i], sep = ',')
+}
+
+```
+
+```{r}
+#Because the class of last step's outcome was character, here I would split the strings, convert them into numerics, and use them as index to extract distance value from dist_tbl.
+region_dist <- matrix(rep(0, 474032), ncol = 344)
+
+for (i in 1:344) {
+  tmp<- strsplit(train_test_regions[,i], split = ',')
+  for (z in 1:length(tmp)) {
+    region_dist[z,i] <- dist_tbl[as.numeric(tmp[[z]][1]), as.numeric(tmp[[z]][2])]
+  }
+}
+
+```
+
+
+```{r}
+#Adding the symbolic feature distance to the non symbolic feature distances, and take sqrt to calculate the distance after combining them.
+train_test_dist <- dist2(train_nor, test_nor, method = 'euclidean')
+train_test_dist <- (train_test_dist)^2
+
+tbl_with_condProb <- sqrt(region_dist + train_test_dist)
+```
+
+```{r}
+#caluate the accuracy (including both the symbolic and nonsymbolic features) without using `knn()`
+accuracy = vector(mode = 'numeric', length=0)
+prediction = list()
+
+for (i in (1:16)) {
+  #using K from 75 to 105, step = 2
+  k = 73 + 2*i
+  
+  #retriving the order of data and include only the top K rows
+  order <- apply(tbl_with_condProb, 2 , order)
+  #order <-apply(train_test_dist,2,order)
+  order <- head(order, k)
+  
+  #extract labels from the training data and create a matrix with identical dimension to the order or value, based on K at the moment.
+  label <- matrix(train_label[c(order)], ncol = 344)
+  
+  #calculate the sum of the label by columns
+  tmp2 <- apply(label, 2, sum)
+  #if the sum is more than half of the K at the moment, vote 1, else vote 0
+  pred <- ifelse(tmp2>k/2, 1, 0)
+  prediction[[i]] <- pred
+  
+  #calculate the accuracy
+  pred_tmp <- confusionMatrix(test_label, pred)
+  accuracy <- append(accuracy, as.numeric(pred_tmp$overall[1]))
+}
+```
+
+```{r}
+#reporting accuracy
+k <- seq(75, 105, 2)
+accuracy <- accuracy * 100
+accuracy_tbl2 <- data.frame(cbind(k, accuracy))
+accuracy_tbl2
+```
+
+#### 2d. 
+    Plot the accuracy rate vs. K. Which value of K gives you the best accuracy rate?
+```{r}
+ggplot(accuracy_tbl2, aes(k, accuracy)) + 
+  geom_line() +
+  labs(title = 'Accuracy of predicting pdc-80-flag based on K, \nusing both symbolic and nonsymbolic features')
+
+K_best <- accuracy_tbl2$k[which(accuracy_tbl2$accuracy == max(accuracy_tbl2$accuracy))]
+```
+When K = `r K_best`, the model gave the best accuracy rate.
+
+#### 2e. 
+    What did your model predict for the 100th,200th, and 300th test points?
+```{r}
+CrossTable(x= test_label, y =prediction[[1]])
+
+test_points = c(100, 200, 300)
+pred_test_points <- prediction[[1]][test_points]
+```
+    Among all the models, the accuracy was the highest when K = 75, the 100th, 200th, and 300th test points of the model were `r pred_test_points`. 

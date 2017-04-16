@@ -1,0 +1,110 @@
+---
+title: "ANLT222_HW1"
+author: "Xi Liang"
+date: "2/22/2017"
+output: html_document
+---
+In this problem, you will implement a Distance-Weighted Nearest Neighbor Classifier and run it on a 2-dimensional dataset. (You can’t use built-in knn functions in R to do this problem). You have to experiment with different distance measures and observe their influence on the classification performance.
+The training data has two classes as shown in figure 1. The training set along with test points and their correct label are saved in knnData.csv.
+Apply 3-NN and report your accuracy rate on test points for the following distance measures:
+
+  1. $L_2$ norm
+  2. $L_1$ norm
+  3. $L_/infinity$ norm
+  
+```{r}
+setwd("~/Google Drive/UOP/Spring 2017/Machine Learning I/HW1")
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(gmodels)
+library(ggplot2)
+library(flexclust)
+```
+
+
+```{r}
+data <- read.csv('knnData.csv')
+str(data)
+``` 
+
+```{r}
+#splitingg the data into trainning set and testing set
+train <- data[,1:2]
+test <- data[, 4:5]
+
+# seperate trainning and testing labels from the data set
+train_label <- data[,3]
+test_label <- data[,6]
+```
+
+Here, we try to get a general idea how our data points distributed among the plot.
+```{r}
+
+tmp1 <- ggplot(train, aes(trainPoints_x1, trainPoints_x2)) +
+  geom_point(pch= 21, colour = 'red') +
+  geom_point(data = test, aes(testPoints_x1, testPoints_x2), pch=17, colour = 'green')
+
+tmp1
+  
+```
+
+We would use `dist2` function from the `flexclust` library to calculate the distance between the train and test data sets, based on Euclidean, Manhanttan, and maxium distances
+```{r}
+dist_EU <- dist2(train, test, method = "euclidean")
+dist_Man <- dist2(train, test, method = "manhattan")
+dist_Max <- dist2(train, test, method = "max")
+```
+
+We would create a function that would return the prediction based on the input distances
+```{r}
+KNN3_pred <- function(x) {
+  #return the positions of the 3 closest data points to each of the test point 
+  KNN3_order <-apply(x, 2, order)
+  KNN3_order <- head(KNN3_order, 3)
+  
+  #return the value of the 3 closest data points to each of the test point
+  KNN3_value <- apply(x, 2, sort)
+  KNN3_value <- head(KNN3_value, 3)
+  
+  #calculate the weight using 1/d^2
+  KNN3_weight <-apply(KNN3_value, 2, FUN = function(x) {(1/x)^2} )
+  #return the labels of the trainning set(closest 3), in matrix form
+  KNN3_label <- matrix(train_label[c(KNN3_order)], ncol = 40)
+  
+  #multiply the weight with the label
+  tmp1 <- KNN3_weight * KNN3_label
+  #sum up the labels by columns
+  tmp2 <- apply(tmp1, 2, sum)
+  
+  #if the sum is larger than 0, label it as 1, if the sum is negative, label it as -1
+  pred <- ifelse(tmp2 >0, 1, -1)
+  
+  #return the prediction
+  return(pred)
+}
+```
+
+```{r}
+distEU_pred <- KNN3_pred(dist_EU)
+distMan_pred <- KNN3_pred(dist_Man)
+distMax_pred <- KNN3_pred(dist_Max)
+```
+
+
+```{r}
+CrossTable(x = test_label, distEU_pred, prop.chisq = FALSE)
+```
+Using the Euclidean distance, we have 10 true postives and 23 true negatives, the correctness of the model is (23+10)/40 = 82.5%
+
+
+```{r}
+CrossTable(x = test_label, distMan_pred, prop.chisq = FALSE)
+```
+Using the Manhattan  distance, we have 11 true postives and 24 true negatives, the correctness of the model is (24+11)/40 = 87.5%
+
+
+```{r}
+CrossTable(x = test_label, distMax_pred, prop.chisq = FALSE)
+```
+Using the Max  distance, we have 11 true postives and 24 true negatives, the correctness of the model is (24+11)/40 = 87.5%

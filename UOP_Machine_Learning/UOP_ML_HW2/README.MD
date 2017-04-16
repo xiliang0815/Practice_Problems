@@ -1,0 +1,1 @@
+In this assignment you’ll be applying KNN algorithm to a healthcare data set. The data files for training and test are named healthcareTrain.csv and health- careTest.csv, respectively. The details of this data set will be discussed in the Healthcare Case Study module. You can also find the description of each feature in the DataDictionary file.

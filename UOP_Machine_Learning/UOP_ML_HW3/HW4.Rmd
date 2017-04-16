@@ -1,0 +1,242 @@
+---
+title: "ANLT222_HW4"
+author: "Xi Liang"
+date: "3/23/2017"
+output: html_document
+---
+
+## Problem 1. 
+
+    In this problem you will use the data file “vizData.csv” (x and y denote the input and target) to visualize the effect of gamma in the parametric RBF model on a simple data set. Use all training points in the data set as cluster centers.
+
+```{r}
+vizdata <- read.csv('data/vizData.csv')
+
+head(vizdata)
+```
+
+### 1a. 
+
+    Create a regression RBF model with γ equal 5. Plot the final hypothesis curve along with the training points on the same plot.
+    
+```{r, warning=FALSE,message=FALSE}
+library(flexclust)
+library(MASS)
+library(ggplot2)
+library(magrittr)
+```
+
+```{r}
+#since there is only one coloumn of feature, we would calculate Phi by calculating the distance between the feature itself.
+# gamma = 5
+distance <- dist2(vizdata$x, vizdata$x,method='euc')^2
+Phi<- exp((-5 * distance))
+
+#calculate the weight by exact interpolation
+weight <- solve(Phi)%*%vizdata$y
+
+#We now have the Phi and weight, in order to plot the data, we would introduce a set of continuous vector, generated randomlly
+set.seed(1)
+inpt <- runif(1000, max=3.5, min=-3.5)
+inpt <- as.matrix(inpt,ncol=1)
+
+#calculate the distance between the trainning points (cluster centers) and the new vector
+distance<-dist2(inpt,vizdata$x,method='euc')
+
+#calculate Phi with gamma = 5
+Phi<- exp((-5 * distance^2))
+
+#use previously calculate weight and times Phi to get new output
+outpt<- Phi %*% weight
+
+#pasting the input points
+plt <- cbind(inpt, outpt)
+plt <- plt %>% as.data.frame()
+
+ggplot(plt, aes(V1,V2)) +
+  geom_line() +
+  geom_point(data=vizdata,mapping = aes(x,y)) +
+  labs(title='Hypothesis Curve When gamma = 5') +
+  xlab('Input')+
+  ylab('Output')
+```
+
+
+
+### 1b.
+
+    Create a regression RBF model with γ equal 1/5. Plot the final hypothesis curve along with the training points on the same plot.
+```{r}
+distance <- dist2(vizdata$x, vizdata$x,method='euc')
+Phi<- exp((-1/5 * distance^2))
+
+#calculate the weight by exact interpolation
+weight <- solve(Phi)%*%vizdata$y
+
+#We now have the Phi and weight, in order to plot the data, we would introduce a set of continuous vector, generated randomlly
+set.seed(1)
+inpt <- runif(1000, max=3.5, min=-3.5)
+inpt <- as.matrix(inpt,ncol=1)
+
+#calculate the distance between the trainning points (cluster centers) and the new vector
+distance<-dist2(inpt,vizdata$x,method='euc')
+
+#calculate Phi with gamma = 5
+Phi<- exp((-1/5 * distance^2))
+
+#use previously calculate weight and times Phi to get new output
+outpt<- Phi %*% weight
+
+#pasting the input points
+plt <- cbind(inpt, outpt)
+plt <- plt %>% as.data.frame()
+
+ggplot(plt, aes(V1,V2)) +
+  geom_line() +
+  geom_point(data=vizdata,mapping = aes(x,y)) +
+  labs(title='Hypothesis Curve When gamma = 1/5') +
+  xlab('Input')+
+  ylab('Output')
+```
+
+### 1c. 
+
+    Explain your observations.
+    
+    
+## Problem 2.
+
+    In this problem you will use the data file “kMeansData.csv” (x1 and x2 denote the input features) to create 3 clusters using unsupervised Lloyd’s k-means algorithm.
+    The training should only stop if the difference between the cluster center locations in two consecutive iterations is less than 0.001 or if the number of iterations has reached 1000. For the initial selection of cluster locations choose 3 points from the data set randomly.
+    After convergence, report the final cluster centers. Plot the 3 clusters in different colors with cluster centers clearly marked on the plot.
+
+```{r}
+#loading data
+kmeans_df <- read.csv('data/kMeansData.csv')
+```
+
+```{r}
+k_means <- function(input_mat, distMethod, iter, clst_pts) {
+  #options for distMethod -> euc, man or max
+  #set seed for reproducibility purpose
+  set.seed(3)
+  
+  #convert input matrix to matrix
+  input_mat <- as.matrix(input_mat)
+  #randomlly select centers for initiation
+  centers <- input_mat[sample(nrow(input_mat),clst_pts),]
+  
+  #list to keep record per iteration
+  clusterList <- vector(iter, mode ='list')
+  #create an empty list for iteration purpose
+  clusterList[[1]] <- matrix(rep(0,2*clst_pts),ncol=2)
+  centerList <- vector(iter, mode ='list')
+  centerList[[1]] <- matrix(rep(0,2*clst_pts),ncol=2)
+  
+  difference <- 1
+  counter <- 2
+  
+  while (max(abs(difference)) > 0.001  & counter <iter+1 ) {
+      #calculate distance based on provided method
+      distance <- dist2(input_mat, centers, method = distMethod)
+      #return which data points in the data is closest to provided centers
+      clusters <- apply(distance, 1, which.min)
+      #calculate means in distance based on clusters
+      centers <- apply(input_mat,2,tapply,clusters,mean)
+    
+      #return clusters history
+      clusterList[[counter]] <- clusters
+      #return center history
+      centerList[[counter]] <- centers
+      
+      difference <- centerList[[counter]] - centerList[[counter-1]]
+      counter = counter + 1
+      
+  }
+list(centers=centerList,clusters=clusterList)
+}
+
+```
+
+```{r}
+List<- k_means(kmeans_df,'euc',1000,3)
+#filter out empty list for both of the center and cluster
+List$centers<-List$centers[lapply(List$centers,length)>0]
+List$clusters<-List$clusters[lapply(List$clusters,length)>0]
+
+new_clst_ctrs <- List$centers[[7]]
+new_clst <- List$clusters[[7]]
+
+#cbind cluster cls for each point, for the purpose of plotting
+new_kmeans_df <- cbind(kmeans_df,new_clst)
+
+new_clst_ctrs
+```
+
+
+```{r}
+row.names(new_clst_ctrs) <- c('center 1', 'center 2', 'center 3')
+colnames(new_clst_ctrs) <- c('x','y')
+new_clst_ctrs <- as.data.frame(new_clst_ctrs)
+
+
+ggplot(new_clst_ctrs, aes(x,y)) + 
+  geom_point(aes(colour=row.names(new_clst_ctrs)),pch=23,cex=6)+
+  geom_point(data=new_kmeans_df, mapping = aes(x1,x2, colour=factor(new_clst))) +
+  labs(title='Cluster Centers and Other Data Points After Converged')
+```
+
+## Problem 3
+
+    In this problem you will use the data file “rbfClassification.csv” to create an RBF classification model. x1 and x2 denote the input features and cls denotes the target class of the corresponding data points.
+    
+### 3a. 
+
+    Use k-means clustering to determine the location of 2 cluster centers that you will use in your RBF model. Report the coordinate of the cluster centers.
+  
+```{r}
+rbf_class <- read.csv("data/rbfClassification.csv")
+```
+
+```{r}
+rbf_class <- as.data.frame(rbf_class)
+label <- rbf_class[,3]
+rbf_class <- rbf_class[,1:2]
+```
+
+```{r}
+#find the best
+List<- k_means(rbf_class,'euc',10,2)
+#filter out empty list for both of the center and cluster
+List$centers<-List$centers[lapply(List$centers,length)>0]
+List$clusters<-List$clusters[lapply(List$clusters,length)>0]
+
+centers <- List$centers[[3]]
+centers <- as.data.frame(centers)
+```
+
+```{r}
+#visualize randomlly choose cluster centers and surronding points
+ggplot(centers, aes(x1,x2)) + 
+  geom_point(aes(colour=row.names(centers)),pch=23,cex=6) +
+  geom_point(data=rbf_class, mapping = aes(x1,x2)) +
+  labs(title='Cluster Centers and Other Data Points Before Converged')
+```
+
+### 3b.
+
+    Train an RBF model using γ = 0.5. Report the correct classification rate of your model.
+```{r}
+library(caret)
+
+r <- 0.5
+
+distance <- dist2(rbf_class, centers, method ='euc')^2
+Phi <- exp(1)^(-r * distance)
+Phi <- cbind(rep(1,nrow(Phi)), Phi)
+weight <- ginv(Phi) %*% label
+pred<-ifelse(Phi %*% weight > 0.5,1,0)
+
+confusionMatrix(pred,label)
+```
+
