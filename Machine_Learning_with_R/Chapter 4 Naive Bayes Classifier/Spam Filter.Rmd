@@ -1,0 +1,168 @@
+---
+title: "Chapter 4, Machine Learning with R, Brett Lantz"
+author: "Xi Liang"
+date: "5/13/2017"
+output: html_document
+---
+
+```{r}
+sms_raw <- read.csv('sms_spam.csv', stringsAsFactors = FALSE)
+```
+
+```{r}
+str(sms_raw)
+```
+
+```{r}
+sms_raw$type <- as.factor(sms_raw$type)
+str(sms_raw$type)
+```
+
+```{r}
+table(sms_raw$type)
+```
+
+```{r}
+library(tm)
+```
+
+```{r}
+sms_corpus <- VCorpus(VectorSource(sms_raw$text))
+print(sms_corpus)
+```
+
+```{r}
+inspect(sms_corpus[1:2])
+```
+
+```{r}
+as.character(sms_corpus[[1]])
+```
+
+```{r}
+lapply(sms_corpus[1:2], as.character)
+```
+
+```{r}
+sms_corpus_clean <- tm_map(sms_corpus, content_transformer(tolower))
+as.character(sms_corpus_clean[[1]])
+```
+
+```{r}
+sms_corpus_clean <- tm_map(sms_corpus_clean, removeNumbers)
+```
+
+```{r}
+sms_corpus_clean <- tm_map(sms_corpus_clean, removeWords, stopwords())
+```
+
+```{r}
+sms_corpus_clean <- tm_map(sms_corpus_clean, removePunctuation)
+```
+
+```{r}
+library(SnowballC)
+sms_corpus_clean <- tm_map(sms_corpus_clean, stemDocument)
+```
+
+```{r}
+sms_corpus_clean <- tm_map(sms_corpus_clean, stripWhitespace)
+```
+
+```{r}
+as.character(sms_corpus_clean[10:12])
+```
+
+```{r}
+sms_dtm <- DocumentTermMatrix(sms_corpus_clean)
+sms_dtm2 <- DocumentTermMatrix(sms_corpus, control = list(tolower = TRUE,
+                                                          removeNumbers = TRUE,
+                                                          stopwords = TRUE,
+                                                          removePunctuation = TRUE,
+                                                          steming = TRUE
+                                                          ))
+```
+
+```{r}
+sms_dtm
+```
+
+```{r}
+sms_dtm2
+```
+
+```{r}
+sms_dtm_train <- sms_dtm[1:4169,]
+sms_dtm_test <- sms_dtm[4170:5559,]
+
+sms_train_labels <- sms_raw[1:4169,]$type
+sms_test_labels <- sms_raw[4170:5559,]$type
+```
+
+```{r}
+prop.table(table(sms_train_labels))
+prop.table(table(sms_test_labels))
+```
+
+```{r}
+library(wordcloud)
+wordcloud(sms_corpus_clean, min.freq = 50, random.order = FALSE)
+```
+
+```{r}
+spam <- subset(sms_raw, type == 'spam')
+ham <- subset(sms_raw, type == 'ham')
+```
+
+```{r}
+wordcloud(spam$text, max.words = 40, scale = c(3, 0.5))
+wordcloud(ham$text, max.words = 40, scale = c(3, 0.5))
+```
+
+```{r}
+sms_freq_words <- findFreqTerms(sms_dtm_train, 5)
+```
+
+```{r}
+str(sms_freq_words)
+```
+
+```{r}
+sms_dtm_freq_train <- sms_dtm_train[, sms_freq_words]
+sms_dtm_freq_test <- sms_dtm_test[, sms_freq_words]
+```
+
+```{r}
+convert_counts <- function(x) {
+  x <- ifelse(x >0, "Yes", "No")
+}
+```
+
+```{r}
+sms_train <- apply(sms_dtm_freq_train, 2, convert_counts)
+sms_test <- apply(sms_dtm_freq_test, 2, convert_counts)
+```
+
+```{r}
+library(e1071)
+sms_classifier <- naiveBayes(sms_train, sms_train_labels)
+sms_classifier
+```
+
+```{r}
+sms_test_pred <- predict(sms_classifier, sms_test)
+```
+
+```{r}
+library(gmodels)
+CrossTable(sms_test_pred, sms_test_labels, prop.chisq = FALSE, prop.t = FALSE,
+           dnn = c('predicted', 'actual'))
+```
+
+```{r}
+sms_classifier2 <- naiveBayes(sms_train, sms_train_labels, laplace = 1)
+sms_test_pred2 <- predict(sms_classifier2, sms_test)
+CrossTable(sms_test_pred2, sms_test_labels, prop.chisq = FALSE, prop.t = FALSE, prop.r = FALSE,
+           dnn = c('predicted', 'actual'))
+```
+
