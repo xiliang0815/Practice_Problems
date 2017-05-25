@@ -1,0 +1,136 @@
+---
+title: 'Chapter 5: Classification Using Decision Trees and Rules'
+author: "Xi Liang"
+date: "5/23/2017"
+output: pdf_document
+---
+```{r}
+library(dplyr)
+```
+
+## Identifying risky bank loans using C5.0 decision trees
+
+### Data Exploration
+```{r}
+credit <- read.csv("data/credit.csv")
+```
+
+```{r}
+str(credit)
+```
+
+From here we will take a look at features that I believe that are likely to predict a loan default
+```{r}
+table(credit$checking_balance)
+```
+
+```{r}
+table(credit$savings_balance)
+```
+
+```{r}
+summary(credit$months_loan_duration)
+```
+
+```{r}
+summary(credit$amount)
+```
+
+```{r}
+credit$default <- ifelse(credit$default == 1, 'no', 'yes')
+credit$default <- factor(credit$default)
+table(credit$default)
+```
+
+### Data Preparation
+
+Creating random trainning and test datasets
+```{r}
+set.seed(123)
+train_sample <- sample(1000, 900)
+
+credit_train <- credit[train_sample, ]
+credit_test <- credit[-train_sample, ]
+```
+
+### Training a model on the data
+```{r}
+library(C50)
+credit_model <- C5.0(credit_train[-17], credit_train$default)
+credit_model
+```
+
+```{r}
+summary(credit_model)
+```
+
+### Improving model performance
+```{r}
+credit_pred <- predict(credit_model, credit_test)
+```
+
+```{r}
+library(gmodels)
+CrossTable(credit_test$default, credit_pred,
+           prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE,
+           dnn = c('actual default', 'predicted default'))
+```
+Out of 100 applicant records, the model correctly predicted 60 applicants did not default, and 14 did default, resulting 74% accuracy and error rate 26% (higher than training data).
+
+### Improving model performance
+
+#### Boosting accuracy of decision trees
+
+We could try increasing the accuracy of the model through the addition of adaptive boosting
+```{r}
+credit_boost10 <- C5.0(credit_train[-17], credit_train$default,
+                       trails = 10)
+
+credit_boost10
+```
+
+```{r}
+summary(credit_boost10)
+```
+
+```{r}
+credit_boost_pred10 <- predict(credit_boost10, credit_test)
+
+CrossTable(credit_test$default, credit_boost_pred10,
+           prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE,
+           dnn = c('actual default', 'predicted default'))
+```
+
+Based on what I observed from the result, adaptive boosting did not improve the performance of the prediction.
+
+#### Making mistakes more costlier than others
+
+```{r}
+matrix_dimensions <- list(c("no", "yes"), c("no", "yes"))
+names(matrix_dimensions) <- c("predicted", "actual")
+```
+
+```{r}
+error_cost <- matrix(c(0, 1, 4, 0), nrow = 2,
+                     dimnames = matrix_dimensions)
+```
+
+In this case, we assume that a loan default costs the bank four times as much as a missed opportunity.
+```{r}
+error_cost
+```
+
+```{r}
+credit_cost <- C5.0(credit_train[-17], credit_train$default,
+                    costs = error_cost)
+```
+
+```{r}
+credit_cost_pred <- predict(credit_cost, credit_test)
+CrossTable(credit_test$default, credit_cost_pred,
+           prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE,
+           dnn = c('actual default', 'predicted default'))
+```
+
+Comparing to the boosted model,this model had 41% of error rate, while the boosting model only had 26%. However, boosting model had 19% of false postives (predicted 19% of applicants did not default while they did), the cost model effectively reducued the false postives with the trade off of reduction in false negatives. This may be acceptable if our cost estimates were accurate.
+
