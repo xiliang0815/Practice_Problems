@@ -1,0 +1,304 @@
+---
+title: "Chapter 6 Code"
+author: "Xi Liang"
+date: "5/25/2017"
+output: pdf_document
+---
+
+## Example 1. Predicting medical expense using linear regression
+### 1a. Exploring and preparing the data
+```{r}
+insurance <- read.csv("data/insurance.csv")
+```
+
+```{r}
+str(insurance)
+```
+
+This data includes 1,338 examples of beneficiares currently enrolled in the insurance plan, with features indicating characteristics of the patient as well as the total medical expenses charged to the plan for the calendar year. The features are:
+
+* age: An integer indicating the age of the primary beneficiary (excluding those above 64 years, since they are genearlly covered by the government).
+* sex: The policy holder's gender, either male or female.
+* bmi: The body mass index (BMI), which provides a sense of how over-or under-weight a pwerson is relative to their weight. An ideal BMI is within the range of 18.5 to 24.9.
+* children: An integer indicating the number of children/dependents covered by the insurance plan.
+* smoker: A yes or no categorical variable that indicates whether the insured regularly smokes tobacco.
+* region: The beneficiary's place of residence in the US, divided in the four regions: northeast, southeast, southwest, or northwest.
+
+### 1b. Exploring and preparing the data
+
+Before the next step, we would like to check the normality of our response variable.
+```{r}
+summary(insurance$charges)
+```
+
+```{r}
+hist(insurance$charges)
+```
+
+The distribution of the response varibale is right-skewed. It also shows that the majority of people in our data have yearly medical expenses between zero and $15,000.
+
+### 1c. Exploring relationshps among features - the correlation matrix
+```{r}
+library(corrplot)
+library(dplyr)
+```
+
+```{r}
+cor(insurance[c("age", "bmi", "children", "charges")])
+```
+
+### 1d. Visualizing relationships among features - the scatterplot matrix
+```{r}
+library(psych)
+pairs.panels(insurance[c("age", "bmi", "children", "charges")])
+```
+
+Through correlation ellipses, we could observe the correlation strength between variables in the dataset. While the ellipses are more stretched, the higher the correlation. For example, we could see that age and charges have relatively strong correlation (0.07), while BMI and number of children/dependent covered by the insurance plan is very weak (0.01).
+
+We also obseved that the in scatter plot between BMI and age, the losess curve is a line sloping gradually up, which implies that body mass increases with age. In addition, in the scatter plot of age and children, we observed that middle age individuals have more children that younger and older people.
+
+Bear in mind that the above correlation plot only included numerical variables, we would see how categorical variables behave in the model.
+
+### 1e. Training a model on the data
+```{r}
+ins_model <- lm(charges ~., data = insurance)
+
+ins_model
+```
+
+Through the intepretation of the beta coefficients, we've gain the following insight: old age, smoking, and obsesity tend to be linked to addtional health issues, while addtional family member dependents may  result an increase in physician visits and preventive care.
+
+### 1f. evaluating model performance
+```{r}
+summary(ins_model)
+```
+
+From the residuals section, we observe that the maximum error of 29981.7 suggests that the model under-predicted expsnes by nearly $30,000 for at least on observation. Also, the majority of predictions were between $2848.1 over the true value and #1393.9 under the true value.
+
+Based on the p-values, the model finds variables age, BMI, children, and smoking statistically significant. 
+
+Multiple R-sqaured tells us that the model explains nearly 75% of the variation in the dependent variable.
+
+### 1g. improving model performance
+
+1. adding no-linear relationships
+The relationship between age and expense might not be linear; the treatment may become disproportionately expensive for oldest populations, hence we will add a higher order term to the variable "age".
+```{r}
+insurance$age2 <- insurance$age^2
+```
+
+2. transformation - converting a numeric variable to a binary indicator
+We speculate that the effect of variable "bmi" is not cumulative, rather it has an effect only after a specific threshold has been reached, for example, BMI might have zero impact on medical expenditures for individuals in the normal weight range, but it may be strongly related to higher costs for the obese ( > 30).
+```{r}
+insurance$bmi30 <- ifelse(insurance$bmi >= 30, 1, 0)
+```
+
+3. model specification - adding interaction effects
+While considering bmi and smoking contribution to the outcome individually, we should also consider that the combined effect of these variables may be worse than the sum of each one alone. As the result, in the later modeling process, we should include "bmi30*smoker".
+
+### 1h. putting it all together - an improved regression model
+```{r}
+ins_model2 <- lm(charges ~ age + age2 + children + bmi + sex + bmi30*smoker + region, data = insurance)
+```
+
+```{r}
+summary(ins_model2)
+```
+
+By comparing the ajusted R-squared, we can conclude that the second model is better than the previous one. 
+
+## Example 2. Estimating the quality of wines with regression trees and model trees
+
+### 2a. exploring and preparing the data
+```{r}
+wine <- read.csv("data/whitewines.csv")
+```
+
+```{r}
+str(wine)
+```
+
+```{r}
+hist(wine$quality)
+```
+
+```{r}
+wine_train <- wine[1:3750, ]
+wine_test <- wine[3751:4898, ]
+```
+
+### 2b. training a model on the data
+```{r}
+library(rpart)
+
+m.rpart <- rpart(quality ~., data = wine_train)
+```
+
+```{r}
+m.rpart
+```
+
+```{r}
+summary(m.rpart)
+```
+
+### 2c. visualizing decision trees
+```{r}
+library(rpart.plot)
+rpart.plot(m.rpart, digits = 3)
+```
+
+```{r}
+rpart.plot(m.rpart, digits = 4, fallen.leaves = TRUE, 
+           type = 3, extra = 101)
+```
+
+### 2d. evaluating model performance
+```{r}
+p.rpart <- predict(m.rpart, wine_test)
+```
+
+```{r}
+summary(p.rpart)
+```
+
+```{r}
+summary(wine_test$quality)
+```
+
+Comparing the distribution of our predicted values and the expected values, we notice that the model is not correctly identifying the extreme cases, in particular the best and the worst wines.
+
+To evaluate the model performance, we could use the correlation between the predicted and actualy values in order to measure the relationship.
+```{r}
+cor(p.rpart, wine_test$quality)
+```
+
+While correlation measures how strongly the predictions are related to true value, it is not measuring how far off the predictions were from the true values. To evaluate our model performance based on how far, we will use mean absolute error.
+
+```{r}
+#function to calculate the mean absolute error
+MAE <- function(actual, predicted) {
+  mean(abs(actual - predicted))
+}
+```
+
+```{r}
+MAE(p.rpart, wine_test$quality)
+```
+
+The MAE value is 0.57, which implies that on avareage, the difference between our model's predictions and the true quality score was 0.57.
+
+```{r}
+mean(wine_train$quality)
+```
+
+```{r}
+MAE(5.89, wine_test$quality)
+```
+
+From the MAE score of the mean of the quality score and actual quality score, one can notice that the model is predicting values close to the mean value. There might be room for improvment.
+
+### 2e. improving model performance
+
+#### Random Forest
+We will use random forest to try to increase the performance of the model
+```{r}
+library(randomForest)
+```
+
+```{r}
+m.randomForest <- randomForest(quality ~., data = wine_train)
+```
+
+```{r}
+m.randomForest
+```
+
+```{r}
+pred.randomForest <- predict(m.randomForest, wine_test)
+summary(pred.randomForest)
+```
+
+```{r}
+cor(pred.randomForest, wine_test$quality)
+```
+
+```{r}
+MAE(pred.randomForest, wine_test$quality)
+```
+
+#### further tunning via grid search
+
+```{r}
+library(e1071)
+```
+
+```{r}
+set.seed(123)
+tuned.rF <- tune(randomForest, train.x = quality ~.,
+                 data = wine_train,
+                 validation.x = wine_test)
+
+best.rF <- tuned.rF$best.model
+```
+
+```{r}
+best.rF.pred <- predict(best.rF, wine_test)
+summary(best.rF.pred)
+```
+
+```{r}
+cor(best.rF.pred, wine_test$quality)
+```
+
+```{r}
+MAE(best.rF.pred, wine_test$quality)
+```
+
+It seems that tunning the model through grid search worsen the model performance a bit. While tuned model achieved a higher correlation, however, it has a lower MAE score compare to the untunned model.
+
+Next, we will try to use model trees to improve the performance of our learner.
+
+#### Model Trees
+
+```{r}
+library(RWeka)
+library(rJava)
+```
+
+```{r, warning = FALSE}
+m.m5p <- M5P(quality ~., data = wine_train)
+m.m5p
+```
+
+Although comparing to the decision tree model we built earlier, how the model split was very similar, however, notice that the nodes terminate not in a numeric prediction, but a linear model.
+
+We will go through statistics to see how well the model fits the training data.
+```{r}
+summary(m.m5p)
+```
+
+We will then make prediction with the model.
+
+```{r}
+p.m5p <- predict(m.m5p, wine_test)
+```
+
+```{r}
+summary(p.m5p)
+```
+
+This tree model seems to predict a wider range comparing to our ealier models.
+
+```{r}
+cor(p.m5p, wine_test$quality)
+```
+
+While the correlation of the model trees is higher than the decision tree model, however, it is lower than the random forest model.
+
+```{r}
+MAE(p.m5p, wine_test$quality)
+```
+ MAE score of the model trees is less than the decision tree model but higher than the random forest model.
+ 
+ 
