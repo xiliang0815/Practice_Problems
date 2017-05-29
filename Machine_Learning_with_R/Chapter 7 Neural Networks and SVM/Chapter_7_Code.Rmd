@@ -1,0 +1,143 @@
+---
+title: "Chapter 7 Code"
+author: "Xi Liang"
+date: "5/26/2017"
+output: pdf_document
+---
+
+# Example 1. Modeling the strength of concrete with ANNs
+
+## Exploring and preparing the data
+```{r}
+concrete <- read.csv('data/concrete.csv')
+```
+
+```{r}
+str(concrete)
+```
+
+Normalizing the data.
+```{r}
+normalize <- function(x) {
+  return ((x-min(x)) / (max(x) - min(x)))
+}
+```
+
+```{r}
+concrete_norm <- as.data.frame(lapply(concrete, normalize))
+```
+
+```{r}
+summary(concrete_norm$strength)
+```
+
+## training a model on the data
+```{r}
+concrete_train <- concrete_norm[1:773, ] 
+concrete_test <- concrete_norm[774:1030, ]
+```
+
+```{r}
+library(neuralnet)
+```
+
+```{r}
+set.seed(10)
+concrete_model <- neuralnet(strength ~ cement + slag + ash + water + superplastic + coarseagg + fineagg + age, data = concrete_train)
+```
+
+```{r}
+plot(concrete_model)
+```
+
+## evaluating model performance
+```{r}
+model_results <- compute(concrete_model, concrete_test[1:8])
+predicted_strength <- model_results$net.result
+```
+
+```{r}
+cor(predicted_strength, concrete_test$strength)
+```
+
+## improving model performance
+```{r}
+set.seed(10)
+concrete_model2 <- neuralnet(strength ~ cement + slag + ash + water + superplastic + coarseagg + fineagg + age,
+                             data = concrete_train, hidden = 5)
+```
+
+```{r}
+plot(concrete_model2)
+```
+
+```{r}
+model_results2 <- compute(concrete_model2, concrete_test[1:8])
+predicted_strength2 <- model_results2$net.result
+cor(predicted_strength2, concrete_test$strength)
+```
+
+# Example 2. Peforming OCR with SVMs
+
+## Exploring and preparing the data
+```{r}
+letters <- read.csv("data/letterdata.csv")
+```
+
+```{r}
+str(letters)
+```
+
+## Training a model on the data
+```{r}
+library(kernlab)
+```
+
+```{r}
+letters_train <- letters[1:16000, ]
+letters_test <- letters[16001:2000, ]
+```
+
+```{r}
+letter_classifier <- ksvm(letter ~., data = letters_train,
+                          kernal = "vanilladot")
+```
+
+```{r}
+letter_classifier
+```
+
+## Evaluating model performance
+```{r}
+letter_predictions <- predict(letter_classifier, letters_test)
+head(letter_predictions)
+```
+
+```{r}
+table(letter_predictions, letters_test$letter)
+```
+
+```{r}
+agreement <- letter_predictions == letters_test$letter
+prop.table(table(agreement))
+```
+
+## Improving model performance
+```{r}
+letter_classifier_rbf <- ksvm(letter ~., data = letters_train,
+                              kernel = "rbfdot")
+```
+
+```{r}
+letter_predictions_rbf <- predict(letter_classifier_rbf, letters_test)
+```
+
+```{r}
+agreement_rbf <- letter_predictions_rbf == letters_test$letter
+table(agreement_rbf)
+```
+
+```{r}
+prop.table(table(agreement_rbf))
+```
+
