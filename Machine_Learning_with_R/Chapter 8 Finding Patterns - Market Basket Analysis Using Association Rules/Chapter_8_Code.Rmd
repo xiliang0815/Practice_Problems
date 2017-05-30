@@ -1,0 +1,124 @@
+---
+title: "Chapter 8 Code"
+author: "Xi Liang"
+date: "5/29/2017"
+output: 
+  pdf_document:
+    toc: true
+    toc_depth: 4
+---
+
+## Example 1. Identifying frequently purhcased groceries with association rules
+
+Our market basket analysis wil utilize the purhcase data collected from one monht o operation at a real-word grocery store. The data contains 9,835 transactions or about 327 transactions per day.
+
+### Data Preparation - creating a sparse matrix for transaction data
+```{r}
+library(arules)
+```
+
+```{r}
+groceries <- read.transactions("data/groceries.csv", sep = ",")
+summary(groceries)
+```
+
+```{r}
+inspect(groceries[1:5])
+```
+
+```{r}
+itemFrequency(groceries[, 1:5])
+```
+
+### Visualizing item support - item frequency plots
+
+Eight items in the data with at least 10% support.
+```{r}
+itemFrequencyPlot(groceries, support = 0.1)
+```
+
+Top 20 items in the data
+```{r}
+itemFrequencyPlot(groceries, topN = 20)
+```
+
+### Visualizing the transaction data - plotting the sparse matrix
+
+To visualize the entire sparse matrix using `image()`
+```{r}
+image(groceries[1:5])
+```
+
+From the diagrame above, we observe that there are 5 rows and 169 columns, indicating 5 transactions and 169 possible items we requested. 
+
+We can also see that first, fourth, and fifth transactions contained four items each, and row three, five, two and four have an item in common.
+
+
+Visualzing random selection of 100 transactions
+```{r}
+image(sample(groceries, 100))
+```
+
+### Training a model on the data
+
+We will attempt to use the default settings of support = 0.1 and confidence = 0.8.
+```{r}
+apriori(data = groceries)
+```
+
+We ended with 0 rules returned when we used the default settings, which is not surprising. Because support = 0.1 by default, in order to genderate a rule, an item must have appeared in at least 0.1 * 9,385 = 938.5 transactions. Since only eight items appeared this frequently in our data, it's no wonder that we did not find any rules.
+
+One way to approach the above problem of setting a min support threshold is to think about the smalles number of transactions you would need before you would consider a pattern interesting. For example, you could argue that if an item is purhcased twice a day (about 60 times in a month of data), it may be an intersting pattern. From there, it is possible to calculate the support level needed to find only the rules mathcing a least that many transactions. Since 60/9835 = 0.006, we'll try setting the support there first.
+
+We will start with confidence threhold of 0.25, which means that in order to be included in the reuslts,the rule has be correct at least 25 perent of the time. We'll also set minlen = 2 to eliminate rules that contain fewer than two items. 
+
+```{r}
+groceryrules <- apriori(groceries, parameter = list(support = 0.006, confidence = 0.25, minlen = 2))
+```
+
+```{r}
+groceryrules
+```
+Our `groceryrules` object contains a set of 463 association rules. To determine whether any of them are usefule, we will have to dig deeper.
+
+
+### Evaluating model performance
+```{r}
+summary(groceryrules)
+```
+
+In our rule set, 150 rules have only two items, while 297 have three, and 16 have four.
+
+We will inspect the first 3 rules in the `groceryrules` object:
+```{r}
+inspect(groceryrules[1:3])
+```
+
+### Improving model performance
+#### Sorting the set of association rules
+Depending upon the objects of the market basket analysis, the most uesful rules might be the ones with the highest support, confidence, or lift. The best five rules according to the lift statistic can be examined using the following command:
+```{r}
+inspect(sort(groceryrules, by = "lift")[1:5])
+```
+
+#### Taking subetsets of association rules
+Suppose that given the preceding rule, the marketing team is excited about the possibilities of creating an advertisment to promote berries, which are now in season. Before finalizing the campagin, however, they ask you to investigate whether berries are often purchased with other items. To answer this question, we will need to find all the rules that include berries in some form.
+```{r}
+berryrules <- subset(groceryrules, items %in% "berries")
+inspect(berryrules)
+```
+
+### Saving association rules to a file or data frame
+```{r}
+write(groceryrules, file = "groceryrules.csv",
+      sep = ",", quote = TRUE, row.names = FALSE)
+```
+
+```{r}
+groceryrules_df <- as(groceryrules, "data.frame")
+```
+
+```{r}
+str(groceryrules_df)
+```
+
