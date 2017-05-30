@@ -1,0 +1,144 @@
+---
+title: "Chapter 9 Code"
+author: "Xi Liang"
+date: "5/29/2017"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+---
+## Example - Finding teen market segments using k-means clustering
+
+### Exploring and preparing the data
+```{r}
+teens <- read.csv("data/snsdata.csv")
+str(teens)
+```
+
+The data include 30,000 teenagers with four variables indicating personal characteristics and 36 words indicating interests.
+
+From the breif overview of the data, feature `gender` contains some missing information, we want to know how many missing data there are in this feature, since knowing the sexuality of the individuals is important to this study.
+
+```{r}
+prop.table(table(teens$gender, useNA = "ifany"))
+```
+
+Around 9% have missing gender data, and interestingly, there are over four times as many feamals as males in the SNS data, suggesting that males are not as inclined to use SNS website as females.
+
+Beside `gender`, we also find there are a lot of missing data in `age`.
+```{r}
+summary(teens$age)
+```
+A total of 5,086 records (17%) have missing ages. Also concerining is the fact that the minimum and maximum values seem to be unresonable. To ensure that these extreme values don't cause problems for the analysis, we will need to clean them up before moving on.
+
+A more resonable range of ages for the high school students includes those who are at least 13 years old and not yet 20 years old.
+```{r}
+teens$age <- ifelse(teens$age >= 13 & teens$age <20,
+                    teens$age, NA)
+```
+
+```{r}
+summary(teens$age)
+```
+
+#### Data preparation - dummy coding missing values
+
+Since there is a large porption of the data contain missing values, instead of removing those values, we will create another factor beside male and female.
+```{r}
+teens$female <- ifelse(teens$gender == "F" &
+                         !is.na(teens$gender), 1, 0)
+
+teens$no_gender <- ifelse(is.na(teens$gender), 1, 0)
+```
+
+```{r}
+table(teens$gender, useNA = "ifany")
+```
+
+```{r}
+table(teens$female, useNA = "ifany")
+```
+
+```{r}
+table(teens$no_gender, useNA = "ifany")
+```
+
+#### Data preparation - imputing the missing values
+```{r}
+mean(teens$age, na.rm = TRUE)
+```
+
+```{r}
+aggregate(data = teens, age ~ gradyear, mean, na.rm = TRUE)
+```
+
+```{r}
+ave_age <- ave(teens$age, teens$gradyear, FUN = function(x) mean(x, na.rm = TRUE))
+```
+
+```{r}
+teens$age <- ifelse(is.na(teens$age), ave_age, teens$age)
+```
+
+```{r}
+summary(teens$age)
+```
+
+### Training a model on the data
+
+The `kmeans()` function requires a data frame containing only numeric data and a parameter specifying the desired number of clusters. We will be including all the interests in the data frame
+```{r}
+interests <- teens[5:40]
+```
+
+```{r}
+interests_z <- as.data.frame(lapply(interests, scale))
+```
+
+We will try using k = 5 and see where it leads us.
+```{r}
+set.seed(2345)
+teens_clusters <- kmeans(interests_z, 5)
+```
+
+### Evaluating model performance
+```{r}
+teens_clusters$size
+```
+
+Here, we see the five clusters we requested. The smallest cluster has 600 teenagers while the largest cluster has 21,514. Although the large gap between the number of people in the largest and smllest cluster is slightly concerning, without examning these groups more carefully, we will not know whether or not this indicates a problem.
+
+For a more in-depth look at the clusters, we can examine the coordinates of the cluster centroids using the `teen_clusters$centers` component
+```{r}
+teens_clusters$centers
+```
+
+### Improving model performance
+```{r}
+teens$cluster <- teens_clusters$cluster
+```
+
+After assingning cluster numbers back to the data, we would like to see how the cluster assingment relates to individual characteristics. For example, here is the personal information for the first five teens in the SNS data:
+```{r}
+teens[1:5, c("cluster", "gender", "age", "friends")]
+```
+
+We can also look at the demographic characteristics of the clusters. 
+```{r}
+aggregate(data = teens, age ~ cluster, mean)
+```
+
+We can see that mean age does not vary much by cluster.
+
+On the other hand, there are some substantial differences in the proportion of femals by gender.
+```{r}
+aggregate(data = teens, female ~ cluster, mean)
+```
+
+This is very interesting finding as we did not use gender data to create the clusters. Cluster 1 and 3 are nearly 84% female, and these clusters show above the mean interest level on all fashion/shopping related topics. While Cluster 2 and Cluster 5 are only 70% female.
+
+We suspect that the clusters are predictive of the number of friends the users have:
+```{r}
+aggregate(data = teens, friends ~ cluster, mean)
+```
+
